@@ -8,36 +8,26 @@ from torch.utils.data import Dataset, DataLoader
 import torch.optim as optim
 import torch.nn.functional as F
 
-# def batch_alter(batch):
-#     occurrences = batch_size // 2
-#     X, y = batch    
-#     focus = random.choice(y)
-#     y = torch.tensor([[1 if l == focus else 0] for l in y])
-#     X[occurrences:] = torch.squeeze(X[np.where(y.numpy())[0]])
-#     y[occurrences:] = torch.tensor([1])
-#     return (X, y)
- 
 class Fingerprints(Dataset):
     def __init__(self, finger, focus, img_dim=(416, 416)):
         self.img_dim = img_dim
-        self.data = []
+        self.images = []
+        self.labels = []
         finger = finger.split(' ')
         for img_path in glob.glob(DATASET_URL + f'/*{finger[0].capitalize()}_{"_".join([e for e in finger[1:]])}.BMP'):
             img_id = int((img_path.split('/')[-1]).split('_')[0])
-            if img_id == focus: 
-                self.focus = img_path
-                self.data.append([img_path, 1])
-            else:
-                self.data.append([img_path, 0])
-        for o in range(len(self.data) // 2):
-            self.data.append([self.focus, 1])
-        random.shuffle(self.data)
+            self.images.append(img_path)
+            self.labels.append(1 if img_id == focus else 0)
+        focus = self.images[int(np.where(self.labels)[0])]
+        for o in range(len(self.labels) // 2):
+            self.images.append(focus)
+            self.labels.append(1)
 
     def __len__(self): 
-        return len(self.data)
+        return len(self.labels)
 
     def __getitem__(self, idx):
-        img_path, isfocus = self.data[idx]
+        img_path, isfocus = self.images[idx], self.labels[idx]
         img = torch.from_numpy(cv2.resize(cv2.imread(img_path), self.img_dim))
         return img.permute(2, 0, 1).float(), torch.tensor([isfocus])
 
@@ -96,9 +86,9 @@ optimiser = optim.SGD(net.parameters(), lr=0.001, momentum=0.9)
 trainset = DataLoader(
         Fingerprints('left index finger', random.randint(1, 600)), 
         batch_size=batch_size, shuffle=True)
-net.load_state_dict(torch.load(GENERIC_MODEL_URL))
+# net.load_state_dict(torch.load(GENERIC_MODEL_URL))
 train(trainset, net, loss_fn, optimiser)
-torch.save(net.state_dict(), GENERIC_MODEL_URL)
+# torch.save(net.state_dict(), GENERIC_MODEL_URL)
 
 # testset = DataLoader(
 #         Fingerprints('left index finger', 100),
