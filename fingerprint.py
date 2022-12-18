@@ -30,6 +30,31 @@ class Fingerprints(Dataset):
     def __getitem__(self, idx):
         return self.images[idx], torch.tensor([self.labels[idx]])
 
+class ImageProcess:
+    @staticmethod
+    def morph_op(img):
+        ret = cv2.erode(img.numpy(), np.array([[0, 1, 0], [1, 1, 1], [0, 1, 0]]).astype('uint8'), iterations=1)
+        ret = cv2.dilate(img.numpy(), np.array([[0, 1, 0], [1, 1, 1], [0, 1, 0]]).astype('uint8'), iterations=1)
+        return ret
+
+    @staticmethod
+    def g_filter(img):
+        filters = []
+        num_filters = 16
+        ksize = 35
+        sigma = 3.0
+        lambd = 10.0
+        gamma = 0.5
+        psi = 0
+        for theta in np.arange(0, np.pi, np.pi / num_filters): 
+            kern = cv2.getGaborKernel((ksize, ksize), sigma, theta, lambd, gamma, psi, ktype=cv2.CV_64F) 
+            kern /= 1.0 * kern.sum()
+            filters.append(kern)
+        newimage = np.zeros_like(img)
+        depth = -1
+        for kern in filters: np.maximum(newimage, cv2.filter2D(img, depth, kern), newimage)
+        return newimage
+
 class FingerprintModel(nn.Module):
     def __init__(self):
         super().__init__()
@@ -43,37 +68,18 @@ class FingerprintModel(nn.Module):
     def forward(self, x):
         imgplot = plt.imshow(torch.squeeze(x[0]).numpy().astype('uint8'), cmap='gray')
         plt.show()
+
         # Morphological operations
-        for i in range(x.shape[0]):
-            img = x[i].detach()
-            x[i] = torch.tensor(cv2.erode(img.numpy(), np.array([[0, 1, 0], [1, 1, 1], [0, 1, 0]]).astype('uint8'), iterations=4))
-            x[i] = torch.tensor(cv2.dilate(img.numpy(), np.array([[0, 1, 0], [1, 1, 1], [0, 1, 0]]).astype('uint8'), iterations=4))
-        imgplot = plt.imshow(torch.squeeze(x[0]).numpy().astype('uint8'), cmap='gray')
+        x = np.array([ImageProcess.morph_op(img) for img in x])
+        imgplot = plt.imshow(torch.squeeze(torch.tensor(x[0])).numpy().astype('uint8'), cmap='gray')
         plt.show()
 
-        # Gabor filtering for image enhancement and feature extraction
-        filters = []
-        num_filters = 16
-        ksize = 35
-        sigma = 3.0
-        lambd = 10.0
-        gamma = 0.5
-        psi = 0
-        for theta in np.arange(0, np.pi, np.pi / num_filters): 
-            kern = cv2.getGaborKernel((ksize, ksize), sigma, theta, lambd, gamma, psi, ktype=cv2.CV_64F)
-            kern /= 1.0 * kern.sum()
-            filters.append(kern)
-        for i in range(x.shape[0]):
-            img = x[i].detach().numpy()
-            newimage = np.zeros_like(img)
-            depth = -1
-            for kern in filters:
-                image_filter = cv2.filter2D(img, depth, kern)
-                np.maximum(newimage, image_filter, newimage)
-            x[i] = torch.tensor(newimage)
-        imgplot = plt.imshow(torch.squeeze(x[0]).numpy().astype('uint8'), cmap='gray')
+        # Gabor filtering for image enhancement
+        x = np.array([ImageProcess.g_filter(img) for img in x])
+        imgplot = plt.imshow(torch.squeeze(torch.tensor(x[0])).numpy().astype('uint8'), cmap='gray')
         plt.show()
 
+        x = torch.tensor(x)
         x = self.pool(F.relu(self.conv1(x)))
         x = self.pool(F.relu(self.conv2(x)))
         x = torch.flatten(x, 1)
