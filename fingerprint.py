@@ -17,7 +17,7 @@ class Fingerprints(Dataset):
         finger = finger.split(' ')
         for img_path in glob.glob(DATASET_URL + f'/*{finger[0].capitalize()}_{"_".join([e for e in finger[1:]])}.BMP'):
             img_id = int((img_path.split('/')[-1]).split('_')[0])
-            self.images.append(torch.from_numpy(cv2.resize(cv2.imread(img_path), self.img_dim)).permute(2, 0, 1).float())
+            self.images.append(torch.from_numpy(cv2.resize(cv2.imread(img_path, cv2.IMREAD_GRAYSCALE), self.img_dim)[np.newaxis, :, :]).float())
             self.labels.append(1 if img_id == focus else 0)
         focus = self.images[int(np.where(self.labels)[0])]
         for o in range(len(self.labels) // 2):
@@ -31,16 +31,9 @@ class Fingerprints(Dataset):
         return self.images[idx], torch.tensor([self.labels[idx]])
 
 class FingerprintModel(nn.Module):
-    def __init__(self, img_dim):
-        super().__init__()
-
-    def forward(self, x):
-        return x
-
-class ExampleImageNet(nn.Module):
     def __init__(self):
         super().__init__()
-        self.conv1 = nn.Conv2d(3, 6, 5)
+        self.conv1 = nn.Conv2d(1, 6, 5)
         self.pool = nn.MaxPool2d(2, 2)
         self.conv2 = nn.Conv2d(6, 16, 5)
         self.fc1 = nn.Linear(16 * 101 * 101, 120)
@@ -48,6 +41,39 @@ class ExampleImageNet(nn.Module):
         self.fc3 = nn.Linear(84, 1)
         self.s = nn.Sigmoid()
     def forward(self, x):
+        imgplot = plt.imshow(torch.squeeze(x[0]).numpy().astype('uint8'), cmap='gray')
+        plt.show()
+        # Morphological operations
+        for i in range(x.shape[0]):
+            img = x[i].detach()
+            x[i] = torch.tensor(cv2.erode(img.numpy(), np.array([[0, 1, 0], [1, 1, 1], [0, 1, 0]]).astype('uint8'), iterations=4))
+            x[i] = torch.tensor(cv2.dilate(img.numpy(), np.array([[0, 1, 0], [1, 1, 1], [0, 1, 0]]).astype('uint8'), iterations=4))
+        imgplot = plt.imshow(torch.squeeze(x[0]).numpy().astype('uint8'), cmap='gray')
+        plt.show()
+
+        # Gabor filtering for image enhancement and feature extraction
+        filters = []
+        num_filters = 16
+        ksize = 35
+        sigma = 3.0
+        lambd = 10.0
+        gamma = 0.5
+        psi = 0
+        for theta in np.arange(0, np.pi, np.pi / num_filters): 
+            kern = cv2.getGaborKernel((ksize, ksize), sigma, theta, lambd, gamma, psi, ktype=cv2.CV_64F)
+            kern /= 1.0 * kern.sum()
+            filters.append(kern)
+        for i in range(x.shape[0]):
+            img = x[i].detach().numpy()
+            newimage = np.zeros_like(img)
+            depth = -1
+            for kern in filters:
+                image_filter = cv2.filter2D(img, depth, kern)
+                np.maximum(newimage, image_filter, newimage)
+            x[i] = torch.tensor(newimage)
+        imgplot = plt.imshow(torch.squeeze(x[0]).numpy().astype('uint8'), cmap='gray')
+        plt.show()
+
         x = self.pool(F.relu(self.conv1(x)))
         x = self.pool(F.relu(self.conv2(x)))
         x = torch.flatten(x, 1)
@@ -62,8 +88,6 @@ def train(dataloader, network, loss_fn, optimiser):
         running_loss = 0.0
         for i, batch in enumerate(dataloader):
             X, y = batch
-            imgplot = plt.imshow(torch.squeeze(X[0]).permute(1, 2, 0).numpy().astype('uint8'))
-            plt.show()
             optimiser.zero_grad()
             pred = network(X)
             loss = loss_fn(pred, y.float())
@@ -73,21 +97,12 @@ def train(dataloader, network, loss_fn, optimiser):
             print(f'{i + 1} loss: {running_loss}')
             running_loss = 0.0
 
-def test(testset, model, loss_fn):
-    correct = 0
-    with torch.no_grad():
-        for data in testset:
-            X, y = data
-            pred = model(X)
-            correct += 1 if abs(y[0] - pred[0]) <= 0.25 else 0
-    print(f'accuracy: {100 * correct // len(testset)}%')
-
 DATASET_URL = 'data/socofing/real'
 GENERIC_MODEL_URL = 'models/generic.pth'
 
 batch_size = 30 
 
-net = ExampleImageNet()
+net = FingerprintModel()
 loss_fn = nn.MSELoss() 
 optimiser = optim.SGD(net.parameters(), lr=0.001, momentum=0.9)
 
@@ -95,6 +110,3 @@ trainset = DataLoader(Fingerprints('left index finger', random.randint(1, 600)),
 # net.load_state_dict(torch.load(GENERIC_MODEL_URL))
 train(trainset, net, loss_fn, optimiser)
 # torch.save(net.state_dict(), GENERIC_MODEL_URL)
-
-# testset = DataLoader(Fingerprints('left index finger', 100), shuffle=True)
-# net.load_state_dict(torch.load(GENERIC_MODEL_URL))
