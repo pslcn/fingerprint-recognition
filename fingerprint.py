@@ -2,6 +2,7 @@ import glob
 import cv2
 import random
 import numpy as np
+import matplotlib.pyplot as plt
 import torch
 from torch import nn
 from torch.utils.data import Dataset, DataLoader
@@ -16,7 +17,7 @@ class Fingerprints(Dataset):
         finger = finger.split(' ')
         for img_path in glob.glob(DATASET_URL + f'/*{finger[0].capitalize()}_{"_".join([e for e in finger[1:]])}.BMP'):
             img_id = int((img_path.split('/')[-1]).split('_')[0])
-            self.images.append(img_path)
+            self.images.append(torch.from_numpy(cv2.resize(cv2.imread(img_path), self.img_dim)).permute(2, 0, 1).float())
             self.labels.append(1 if img_id == focus else 0)
         focus = self.images[int(np.where(self.labels)[0])]
         for o in range(len(self.labels) // 2):
@@ -27,9 +28,14 @@ class Fingerprints(Dataset):
         return len(self.labels)
 
     def __getitem__(self, idx):
-        img_path, isfocus = self.images[idx], self.labels[idx]
-        img = torch.from_numpy(cv2.resize(cv2.imread(img_path), self.img_dim))
-        return img.permute(2, 0, 1).float(), torch.tensor([isfocus])
+        return self.images[idx], torch.tensor([self.labels[idx]])
+
+class FingerprintModel(nn.Module):
+    def __init__(self, img_dim):
+        super().__init__()
+
+    def forward(self, x):
+        return x
 
 class ExampleImageNet(nn.Module):
     def __init__(self):
@@ -56,6 +62,8 @@ def train(dataloader, network, loss_fn, optimiser):
         running_loss = 0.0
         for i, batch in enumerate(dataloader):
             X, y = batch
+            imgplot = plt.imshow(torch.squeeze(X[0]).permute(1, 2, 0).numpy().astype('uint8'))
+            plt.show()
             optimiser.zero_grad()
             pred = network(X)
             loss = loss_fn(pred, y.float())
@@ -71,7 +79,7 @@ def test(testset, model, loss_fn):
         for data in testset:
             X, y = data
             pred = model(X)
-            correct += (pred == y).sum().item()
+            correct += 1 if abs(y[0] - pred[0]) <= 0.25 else 0
     print(f'accuracy: {100 * correct // len(testset)}%')
 
 DATASET_URL = 'data/socofing/real'
@@ -83,15 +91,10 @@ net = ExampleImageNet()
 loss_fn = nn.MSELoss() 
 optimiser = optim.SGD(net.parameters(), lr=0.001, momentum=0.9)
 
-trainset = DataLoader(
-        Fingerprints('left index finger', random.randint(1, 600)), 
-        batch_size=batch_size, shuffle=True)
+trainset = DataLoader(Fingerprints('left index finger', random.randint(1, 600)), batch_size=batch_size, shuffle=True)
 # net.load_state_dict(torch.load(GENERIC_MODEL_URL))
 train(trainset, net, loss_fn, optimiser)
 # torch.save(net.state_dict(), GENERIC_MODEL_URL)
 
-# testset = DataLoader(
-#         Fingerprints('left index finger', 100),
-#         shuffle=True)
+# testset = DataLoader(Fingerprints('left index finger', 100), shuffle=True)
 # net.load_state_dict(torch.load(GENERIC_MODEL_URL))
-# test(testset, net, loss_fn)
