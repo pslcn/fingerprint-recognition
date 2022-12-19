@@ -76,50 +76,41 @@ class ImageProcess:
         topid = np.argsort(img_distances)[:1].tolist()
         return topid
 
-def show_transform(img1, img2):
-    imgs = np.hstack((img1, img2, np.abs(np.subtract(img1, img2))))
-    plt.imshow(imgs.astype('uint8'), cmap='nipy_spectral')
+def imshow(img):
+    imgplot = plt.imshow(img.astype('uint8'), cmap='gray')
     plt.show()
 
 class FingerprintModel(nn.Module):
     def __init__(self):
         super().__init__()
-        self.conv1 = nn.Conv2d(1, out_channels=6, kernel_size=5)
+        self.conv1 = nn.Conv2d(1, out_channels=16, kernel_size=3)
         self.pool = nn.MaxPool2d(2)
-        self.conv2 = nn.Conv2d(6, 16, 5)
-        self.fc1 = nn.Linear(16 * 101 * 101, 120)
-        self.fc2 = nn.Linear(120, 84)
-        self.fc3 = nn.Linear(84, 1)
+        self.conv2 = nn.Conv2d(16, out_channels=32, kernel_size=3)
+        self.conv3 = nn.Conv2d(32, out_channels=64, kernel_size=3)
+        self.conv4 = nn.Conv2d(64, out_channels=128, kernel_size=3)
+        self.fc1 = nn.Linear(128 * 24 * 24, 128)
+        self.fc2 = nn.Linear(128, 64)
+        self.fc3 = nn.Linear(64, 1)
         self.s = nn.Sigmoid()
 
     def forward(self, x):
-        # imgplot = plt.imshow(x[0][0].numpy().astype('uint8'), cmap='gray')
-        # plt.show()
-
         # Morphological operations
-        # x = np.array([ImageProcess.morph_op(img) for img in x])
         x = [ImageProcess.morph_op(img) for img in x]
-        # imgplot = plt.imshow(x[0][0].astype('uint8'), cmap='gray')
-        # plt.show()
 
         # Gabor filtering for image enhancement
-        # x = np.array([ImageProcess.g_filter(img) for img in x])
-        x = [ImageProcess.g_filter(img) for img in x]
-        # imgplot = plt.imshow(x[0][0].astype('uint8'), cmap='gray')
-        # plt.show()
+        # x = [ImageProcess.g_filter(img) for img in x]
 
         # Feature extraction
-        # features = np.array([ImageProcess.extract_features(img[0]) for img in x])
+        # features = [ImageProcess.extract_features(img[0]) for img in x]
 
         # Matching image
         # focus_features = ImageProcess.extract_features(focus_img)
-        # imgplot = plt.imshow(torch.squeeze(torch.tensor(x[ImageProcess.feature_match(focus_features, features)])).numpy().astype('uint8'), cmap='gray')
-        # plt.show()
 
-        x = np.array(x)
-        x = torch.from_numpy(x).float()
+        x = torch.from_numpy(np.array(x)).float()
         x = self.pool(F.relu(self.conv1(x)))
         x = self.pool(F.relu(self.conv2(x)))
+        x = self.pool(F.relu(self.conv3(x)))
+        x = self.pool(F.relu(self.conv4(x)))
         x = torch.flatten(x, 1)
         x = F.relu(self.fc1(x))
         x = F.relu(self.fc2(x))
@@ -137,9 +128,9 @@ optimiser = optim.SGD(net.parameters(), lr=0.01)
 batch_size = 30 
 trainset = DataLoader(TestFingerprints('left index finger', random.randint(1, 600)), batch_size=batch_size, shuffle=True)
 
-def train(epochs, dataloader, network, loss_fn, optimiser):
+def train(epochs, trainset, network, loss_fn, optimiser):
     for epoch in range(epochs):
-        for i, batch in enumerate(dataloader):
+        for i, batch in enumerate(trainset):
             X, y = batch
             optimiser.zero_grad()
             pred = network(X)
@@ -151,3 +142,13 @@ def train(epochs, dataloader, network, loss_fn, optimiser):
 # net.load_state_dict(torch.load(GENERIC_MODEL_URL))
 train(1, trainset, net, loss_fn, optimiser)
 # torch.save(net.state_dict(), GENERIC_MODEL_URL)
+
+def test(testset, model):
+    with torch.no_grad():
+        for i, batch in enumerate(testset):
+            X, y = batch
+            pred = model(X)
+            print(f'{i + 1} pred: {pred} actual: {y}')
+
+testset = DataLoader(TestFingerprints('left index finger', 100), batch_size=1, shuffle=True)
+test(testset, net)
