@@ -8,6 +8,7 @@ from torch import nn
 from torch.utils.data import Dataset, DataLoader
 import torch.optim as optim
 import torch.nn.functional as F
+from torchvision import models
 
 class Fingerprints(Dataset):
     def __init__(self, finger, focus, img_dim=(416, 416)):
@@ -33,8 +34,9 @@ class Fingerprints(Dataset):
 class ImageProcess:
     @staticmethod
     def morph_op(img):
-        ret = cv2.erode(img.numpy(), np.array([[0, 1, 0], [1, 1, 1], [0, 1, 0]]).astype('uint8'), iterations=1)
-        ret = cv2.dilate(img.numpy(), np.array([[0, 1, 0], [1, 1, 1], [0, 1, 0]]).astype('uint8'), iterations=1)
+        iterations = 2
+        ret = cv2.erode(img.numpy(), np.array([[0, 1, 0], [1, 1, 1], [0, 1, 0]]).astype('uint8'), iterations=iterations)
+        ret = cv2.dilate(img.numpy(), np.array([[0, 1, 0], [1, 1, 1], [0, 1, 0]]).astype('uint8'), iterations=iterations)
         return ret
 
     @staticmethod
@@ -55,6 +57,33 @@ class ImageProcess:
         for kern in filters: np.maximum(newimage, cv2.filter2D(img, depth, kern), newimage)
         return newimage
 
+    @staticmethod
+    def extract_features(img, vector_size=32):
+        try:
+            alg = cv2.KAZE_create()
+            kps = alg.detect(img)
+            kps = sorted(kps, key=lambda x: -x.response)[:vector_size]
+            kps, dsc = alg.compute(img, kps)
+            dsc = dsc.flatten()
+            needed_size = (vector_size * 64)
+            if dsc.size < needed_size:
+                dsc = np.concatenate([dsc, np.zeros(needed_size - dsc.size)])
+        except cv2.error as e:
+            return None
+        return dsc
+
+    @staticmethod
+    def feature_match(img, all_features):
+        features = ImageProcess.extract_features(img)
+        img_distances = scipy.spatial.distance.cdist(all_features, features.reshape(1, -1), 'cosine').reshape(-1) # cos_cdist
+        topid = np.argsort(img_distances)[:1].tolist()
+        return topid
+
+def show_transform(img1, img2):
+    imgs = np.hstack((img1, img2, np.abs(np.subtract(img1, img2))))
+    plt.imshow(imgs.astype('uint8'), cmap='nipy_spectral')
+    plt.show()
+
 class FingerprintModel(nn.Module):
     def __init__(self):
         super().__init__()
@@ -65,19 +94,28 @@ class FingerprintModel(nn.Module):
         self.fc2 = nn.Linear(120, 84)
         self.fc3 = nn.Linear(84, 1)
         self.s = nn.Sigmoid()
+
     def forward(self, x):
-        imgplot = plt.imshow(torch.squeeze(x[0]).numpy().astype('uint8'), cmap='gray')
+        imgplot = plt.imshow(x[0][0].numpy().astype('uint8'), cmap='gray')
         plt.show()
 
         # Morphological operations
         x = np.array([ImageProcess.morph_op(img) for img in x])
-        imgplot = plt.imshow(torch.squeeze(torch.tensor(x[0])).numpy().astype('uint8'), cmap='gray')
+        imgplot = plt.imshow(x[0][0].astype('uint8'), cmap='gray')
         plt.show()
 
         # Gabor filtering for image enhancement
         x = np.array([ImageProcess.g_filter(img) for img in x])
-        imgplot = plt.imshow(torch.squeeze(torch.tensor(x[0])).numpy().astype('uint8'), cmap='gray')
+        imgplot = plt.imshow(x[0][0].astype('uint8'), cmap='gray')
         plt.show()
+
+        # Feature extraction
+        features = np.array([ImageProcess.extract_features(img[0]) for img in x])
+
+        # Matching image 
+        # focus_features = ImageProcess.extract_features(focus_img)
+        # imgplot = plt.imshow(torch.squeeze(torch.tensor(x[ImageProcess.feature_match(focus_features, features)])).numpy().astype('uint8'), cmap='gray')
+        # plt.show()
 
         x = torch.tensor(x)
         x = self.pool(F.relu(self.conv1(x)))
