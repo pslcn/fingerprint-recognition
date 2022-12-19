@@ -80,7 +80,7 @@ def imshow(img):
     imgplot = plt.imshow(img.astype('uint8'), cmap='gray')
     plt.show()
 
-class FingerprintModel(nn.Module):
+class FingerprintFeatureExtractor(nn.Module):
     def __init__(self):
         super().__init__()
         self.conv1 = nn.Conv2d(1, out_channels=16, kernel_size=3)
@@ -98,13 +98,7 @@ class FingerprintModel(nn.Module):
         x = [ImageProcess.morph_op(img) for img in x]
 
         # Gabor filtering for image enhancement
-        # x = [ImageProcess.g_filter(img) for img in x]
-
-        # Feature extraction
-        # features = [ImageProcess.extract_features(img[0]) for img in x]
-
-        # Matching image
-        # focus_features = ImageProcess.extract_features(focus_img)
+        x = [ImageProcess.g_filter(img) for img in x]
 
         x = torch.from_numpy(np.array(x)).float()
         x = self.pool(F.relu(self.conv1(x)))
@@ -118,9 +112,17 @@ class FingerprintModel(nn.Module):
         x = self.s(x)
         return x
 
-DATASET_URL = 'data/socofing/real'
-GENERIC_MODEL_URL = 'models/generic.pth'
+class FingerprintModel(nn.Module):
+    def __init__(self):
+        pass
 
+    def forward(self, x):
+        return x
+
+DATASET_URL = 'data/socofing/real'
+MODEL_URL = 'models/'
+
+fe = FingerprintFeatureExtractor()
 net = FingerprintModel()
 loss_fn = nn.MSELoss() 
 optimiser = optim.SGD(net.parameters(), lr=0.01)
@@ -132,6 +134,7 @@ def train(epochs, trainset, network, loss_fn, optimiser):
     for epoch in range(epochs):
         for i, batch in enumerate(trainset):
             X, y = batch
+            X = fe(x)
             optimiser.zero_grad()
             pred = network(X)
             loss = loss_fn(pred, y.float())
@@ -139,16 +142,14 @@ def train(epochs, trainset, network, loss_fn, optimiser):
             optimiser.step()
             print(f'{i + 1} loss: {loss.item()}')
 
-# net.load_state_dict(torch.load(GENERIC_MODEL_URL))
 train(1, trainset, net, loss_fn, optimiser)
-# torch.save(net.state_dict(), GENERIC_MODEL_URL)
 
-def test(testset, model):
+def test(testset, fe, model):
     with torch.no_grad():
         for i, batch in enumerate(testset):
             X, y = batch
-            pred = model(X)
+            pred = model(fe(X))
             print(f'{i + 1} pred: {pred} actual: {y}')
 
 testset = DataLoader(TestFingerprints('left index finger', 100), batch_size=1, shuffle=True)
-test(testset, net)
+test(testset, fe, net)
