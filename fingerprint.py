@@ -77,23 +77,23 @@ class ImageProcess:
             embedding = torch.cat((embedding, enc_out), 0)
         return embedding
 
-    @staticmethod
-    def feature_match(img, all_features):
-        features = ImageProcess.extract_features(img)
-        img_distances = scipy.spatial.distance.cdist(all_features, features.reshape(1, -1), 'cosine').reshape(-1) # cos_cdist
-        topid = np.argsort(img_distances)[:1].tolist()
-        return topid
+    # @staticmethod
+    # def feature_match(img, all_features):
+    #     features = ImageProcess.extract_features(img)
+    #     img_distances = scipy.spatial.distance.cdist(all_features, features.reshape(1, -1), 'cosine').reshape(-1) # cos_cdist
+    #     topid = np.argsort(img_distances)[:1].tolist()
+    #     return topid
 
-    @staticmethod
-    def compute_img_match(fe, img, embedding):
-        with torch.no_grad():
-            img_embedding = fe(img).detach().numpy()
-        img_embedding = img_embedding.reshape((img_embedding.shape[0], -1))
-        knn = NearestNeighbors(n_neighbours=1, metric='cosine')
-        knn.fit(embedding)
-        _, idx = knn.neighbors(img_embedding)
-        idx = idx.tolist()
-        return idx
+    # @staticmethod
+    # def compute_img_match(feature_extractor, img, embedding):
+    #     with torch.no_grad():
+    #         img_embedding = feature_extractor(img).detach().numpy()
+    #     img_embedding = img_embedding.reshape((img_embedding.shape[0], -1))
+    #     knn = NearestNeighbors(n_neighbours=1, metric='cosine')
+    #     knn.fit(embedding)
+    #     _, idx = knn.neighbors(img_embedding)
+    #     idx = idx.tolist()
+    #     return idx
 
 def imshow(img):
     imgplot = plt.imshow(img.astype('uint8'), cmap='gray')
@@ -169,8 +169,8 @@ def train(epochs):
         return feature_extractor
     net = FingerprintModel()
     loss_fn = nn.MSELoss()
-    optimiser = optim.SGD(net.parameters(), lr=0.001)
-    batch_size = 32 
+    optimiser = optim.Adam(net.parameters(), lr=1e-3)
+    batch_size = 30 
     trainset = DataLoader(Fingerprints('left index finger', random.randint(1, 600)), batch_size=batch_size, shuffle=True)
     feature_extractor = train_feature_extractor(epochs, trainset)
     for e in range(epochs):
@@ -196,7 +196,10 @@ def test(fe, net):
         testset = DataLoader(Fingerprints('left index finger', 100), batch_size=1, shuffle=True)
         for i, batch in enumerate(testset):
             X, y = batch
-            pred = net(ImageProcess.create_embedding(img, feaeture_extractor, EMBEDDING_SHAPE))
+            print(X.shape)
+            X = [ImageProcess.create_embedding(img, feature_extractor, EMBEDDING_SHAPE[1:]).detach().numpy() for img in X]
+            X = torch.from_numpy(np.array(X))
+            pred = net(X)
             print(f'{i + 1} pred: {pred} actual: {y}')
 feature_extractor, net = train(1)
 test(feature_extractor, net)
