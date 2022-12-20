@@ -9,7 +9,7 @@ from torch.utils.data import Dataset, DataLoader
 import torch.optim as optim
 import torch.nn.functional as F
 
-class FingerprintsWithFocus(Dataset):
+class Fingerprints(Dataset):
     def __init__(self, finger, focus, img_dim=(416, 416)):
         self.img_dim = img_dim
         self.images, self.labels = [], []
@@ -54,47 +54,46 @@ class ImageProcess:
         for kern in filters: np.maximum(newimage, cv2.filter2D(img, depth, kern), newimage)
         return newimage
 
-    # @staticmethod
-    # def extract_features(img, vector_size=32):
-    #     try:
-    #         alg = cv2.KAZE_create()
-    #         kps = alg.detect(img)
-    #         kps = sorted(kps, key=lambda x: -x.response)[:vector_size]
-    #         kps, dsc = alg.compute(img, kps)
-    #         dsc = dsc.flatten()
-    #         needed_size = (vector_size * 64)
-    #         if dsc.size < needed_size:
-    #             dsc = np.concatenate([dsc, np.zeros(needed_size - dsc.size)])
-    #     except cv2.error as e:
-    #         return None
-    #     return dsc
     @staticmethod
-    def create_embedding(img, fe, embedding_dim):
-        print(img.shape)
+    def extract_features(img, vector_size=32):
+        try:
+            alg = cv2.KAZE_create()
+            kps = alg.detect(img)
+            kps = sorted(kps, key=lambda x: -x.response)[:vector_size]
+            kps, dsc = alg.compute(img, kps)
+            dsc = dsc.flatten()
+            needed_size = (vector_size * 64)
+            if dsc.size < needed_size:
+                dsc = np.concatenate([dsc, np.zeros(needed_size - dsc.size)])
+        except cv2.error as e:
+            return None
+        return dsc
+
+    @staticmethod
+    def create_embedding(img, feature_extractor, embedding_dim):
         embedding = torch.randn(embedding_dim)
         with torch.no_grad():
-            enc_out = fe(img)
-            print(enc_out.shape)
-        embedding = torch.cat((embedding, enc_out), 0)
-        embedding = embedding.detach().numpy().reshape((embedding.shape[0], -1))
+            enc_out = feature_extractor(img)
+            embedding = torch.cat((embedding, enc_out), 0)
         return embedding
 
-    # @staticmethod
-    # def feature_match(img, all_features):
-    #     features = ImageProcess.extract_features(img)
-    #     img_distances = scipy.spatial.distance.cdist(all_features, features.reshape(1, -1), 'cosine').reshape(-1) # cos_cdist
-    #     topid = np.argsort(img_distances)[:1].tolist()
-    #     return topid
-    # @staticmethod
-    # def compute_img_match(fe, img, embedding):
-    #     with torch.no_grad():
-    #         img_embedding = fe(img).detach().numpy()
-    #     img_embedding = img_embedding.reshape((img_embedding.shape[0], -1))
-    #     knn = NearestNeighbors(n_neighbours=1, metric='cosine')
-    #     knn.fit(embedding)
-    #     _, idx = knn.neighbors(img_embedding)
-    #     idx = idx.tolist()
-    #     return idx
+    @staticmethod
+    def feature_match(img, all_features):
+        features = ImageProcess.extract_features(img)
+        img_distances = scipy.spatial.distance.cdist(all_features, features.reshape(1, -1), 'cosine').reshape(-1) # cos_cdist
+        topid = np.argsort(img_distances)[:1].tolist()
+        return topid
+
+    @staticmethod
+    def compute_img_match(fe, img, embedding):
+        with torch.no_grad():
+            img_embedding = fe(img).detach().numpy()
+        img_embedding = img_embedding.reshape((img_embedding.shape[0], -1))
+        knn = NearestNeighbors(n_neighbours=1, metric='cosine')
+        knn.fit(embedding)
+        _, idx = knn.neighbors(img_embedding)
+        idx = idx.tolist()
+        return idx
 
 def imshow(img):
     imgplot = plt.imshow(img.astype('uint8'), cmap='gray')
@@ -139,7 +138,7 @@ fd = nn.Sequential(
 class FingerprintModel(nn.Module):
     def __init__(self):
         super().__init__()
-        self.fc1 = nn.Linear(256 * 13 * 13, 128)
+        self.fc1 = nn.Linear(512 * 13 * 13, 128)
         self.fc2 = nn.Linear(128, 64)
         self.fc3 = nn.Linear(64, 1)
         self.s = nn.Sigmoid()
@@ -154,37 +153,38 @@ class FingerprintModel(nn.Module):
 
 def train(epochs):
     def train_feature_extractor(epochs, tmp_trainset):
-        fe = FingerprintFeatureExtractor()
+        feature_extractor = FingerprintFeatureExtractor()
         loss_fn = nn.MSELoss()
-        autoencoder_params = list(fe.parameters()) + list(fd.parameters())
+        autoencoder_params = list(feature_extractor.parameters()) + list(fd.parameters())
         optimiser = optim.Adam(autoencoder_params, lr=1e-3)
         for e in range(epochs):
             for i, (img, _) in enumerate(tmp_trainset):
                 optimiser.zero_grad()
-                enc_out = fe(img)
+                enc_out = feature_extractor(img)
                 dec_out = fd(enc_out)
                 loss = loss_fn(dec_out, img.float())
                 loss.backward()
                 optimiser.step()
                 print(f'{i + 1} loss: {loss.item()}')
-        return fe
+        return feature_extractor
     net = FingerprintModel()
     loss_fn = nn.MSELoss()
     optimiser = optim.SGD(net.parameters(), lr=0.001)
     batch_size = 32 
-    trainset = DataLoader(FingerprintsWithFocus('left index finger', random.randint(1, 600)), batch_size=batch_size, shuffle=True)
-    fe = train_feature_extractor(epochs, trainset)
+    trainset = DataLoader(Fingerprints('left index finger', random.randint(1, 600)), batch_size=batch_size, shuffle=True)
+    feature_extractor = train_feature_extractor(epochs, trainset)
     for e in range(epochs):
         for i, batch in enumerate(trainset):
             X, y = batch
             optimiser.zero_grad()
-            X = torch.from_numpy(np.array([ImageProcess.create_embedding(img, fe, EMBEDDING_SHAPE) for img in X]))
+            X = [ImageProcess.create_embedding(img, feature_extractor, EMBEDDING_SHAPE[1:]).detach().numpy() for img in X]
+            X = torch.from_numpy(np.array(X))
             pred = net(X)
             loss = loss_fn(pred, y.float())
             loss.backward()
             optimiser.step()
             print(f'{i + 1} loss: {loss.item()}')
-    return fe, net
+    return feature_extractor, net
 
 DATASET_PATH = 'data/socofing/real'
 MODEL_PATH = 'models/'
@@ -193,10 +193,10 @@ EMBEDDING_SHAPE = (1, 256, 13, 13)
 
 def test(fe, net):
     with torch.no_grad():
-        testset = DataLoader(TestFingerprints('left index finger', 100), batch_size=1, shuffle=True)
+        testset = DataLoader(Fingerprints('left index finger', 100), batch_size=1, shuffle=True)
         for i, batch in enumerate(testset):
             X, y = batch
-            pred = net(ImageProcess.create_embedding(img, fe, EMBEDDING_SHAPE))
+            pred = net(ImageProcess.create_embedding(img, feaeture_extractor, EMBEDDING_SHAPE))
             print(f'{i + 1} pred: {pred} actual: {y}')
-fe, net = train(1)
-test(fe, net)
+feature_extractor, net = train(1)
+test(feature_extractor, net)
