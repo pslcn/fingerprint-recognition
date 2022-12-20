@@ -31,13 +31,13 @@ class Fingerprints(Dataset):
 
 class ImageProcess:
     @staticmethod
-    def morphological_op(img):
+    def apply_morphological_op(img):
         cross = np.array([[0, 1, 0], [1, 1, 1], [0, 1, 0]]).astype('uint8')
         ret = cv2.erode(img.numpy(), cross, iterations=1)
         return cv2.dilate(ret, cross, iterations=2)
 
     @staticmethod
-    def g_filter(img):
+    def apply_gabor_filters(img):
         filters = []
         num_filters = 16
         ksize = 35
@@ -55,7 +55,7 @@ class ImageProcess:
         return newimage
 
     @staticmethod
-    def extract_features(img, vector_size=32):
+    def extract_visual_descriptors(img, vector_size=32):
         try:
             alg = cv2.KAZE_create()
             kps = alg.detect(img)
@@ -78,11 +78,10 @@ class ImageProcess:
         return embedding
 
     @staticmethod
-    def feature_match(img, all_features):
+    def feature_vectors_cos_dist(img, feature_vectors):
         features = ImageProcess.extract_features(img)
-        img_distances = scipy.spatial.distance.cdist(all_features, features.reshape(1, -1), 'cosine').reshape(-1) # cos_cdist
-        topid = np.argsort(img_distances)[:1].tolist()
-        return topid
+        img_distances = scipy.spatial.distance.cdist(feature_vectors, features.reshape(1, -1), 'cosine').reshape(-1) # cos_cdist
+        return np.argsort(img_distances)[:1].tolist()
 
     @staticmethod
     def compute_img_match(feature_extractor, img, embedding):
@@ -107,7 +106,7 @@ class FingerprintFeatureExtractor(nn.Module):
         self.conv5 = nn.Conv2d(128, 256, 3, padding=1)
 
     def forward(self, x):
-        x = [ImageProcess.morphological_op(img) for img in x]
+        x = [ImageProcess.apply_morphological_op(img) for img in x]
         # x = [ImageProcess.g_filter(img) for img in x]
 
         x = torch.from_numpy(np.array(x)).float()
@@ -161,21 +160,23 @@ def imshow(img):
     imgplot = plt.imshow(img.astype('uint8'), cmap='gray')
     plt.show()
 
+def train_feature_extractor(epochs, tmp_trainset):
+    feature_extractor = FingerprintFeatureExtractor()
+    loss_fn = nn.MSELoss()
+    autoencoder_params = list(feature_extractor.parameters()) + list(fd.parameters())
+    optimiser = optim.Adam(autoencoder_params, lr=1e-3) 
+    for e in range(epochs):
+        for i, (img, _) in enumerate(tmp_trainset):
+            optimiser.zero_grad()
+            enc_out = feature_extractor(img)
+            dec_out = fd(enc_out)
+            loss = loss_fn(dec_out, img.float())
+            loss.backward()
+            optimiser.step()
+            print(f'epoch: {e + 1} {i + 1} loss: {loss.item()}')
+    return feature_extractor
+
 def train(epochs):
-    def train_feature_extractor(epochs, tmp_trainset):
-        feature_extractor = FingerprintFeatureExtractor()
-        loss_fn = nn.MSELoss()
-        autoencoder_params = list(feature_extractor.parameters()) + list(fd.parameters())
-        optimiser = optim.Adam(autoencoder_params, lr=1e-3) for e in range(epochs):
-            for i, (img, _) in enumerate(tmp_trainset):
-                optimiser.zero_grad()
-                enc_out = feature_extractor(img)
-                dec_out = fd(enc_out)
-                loss = loss_fn(dec_out, img.float())
-                loss.backward()
-                optimiser.step()
-                print(f'epoch: {e + 1} {i + 1} loss: {loss.item()}')
-        return feature_extractor
     net = FingerprintModel()
     loss_fn = nn.MSELoss()
     optimiser = optim.Adam(net.parameters(), lr=1e-3)
@@ -209,5 +210,6 @@ def test(fe, net):
             X = torch.from_numpy(np.array(X))
             pred = net(X)
             print(f'{i + 1} pred: {pred} actual: {y}')
+
 feature_extractor, net = train(1)
 test(feature_extractor, net)
