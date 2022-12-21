@@ -266,7 +266,7 @@ testnet = nn.Sequential(
 loss_fn = nn.MSELoss()
 optimiser = optim.Adam(testnet.parameters(), lr=1e-3)
 
-for e in range(50):
+for e in range(4):
     for i, batch in enumerate(trainset):
         X, y = batch 
         optimiser.zero_grad()
@@ -288,6 +288,22 @@ for e in range(50):
         # img = ImageProcess.extract_fast_descriptors(img)
 
         # imshow(img)
+
+with torch.no_grad():
+    print('Testing!')
+
+    test_fingerprints = Fingerprints('left index finger', 100)
+    test_focus = test_fingerprints.get_focus()[0]
+    testset = DataLoader(test_fingerprints, batch_size=1, shuffle=True)
+
+    for i, batch in enumerate(testset):
+        X, y = batch
+        X = X.detach().numpy()
+        X = [compare(test_focus, img[0]) for img in X]
+        X = torch.from_numpy(np.array(X))
+
+        pred = testnet(X)
+        print(f'{i + 1} pred: {pred} actual: {y}')
 
 # def test(fe, net):
 #     with torch.no_grad():
