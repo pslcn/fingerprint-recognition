@@ -3,6 +3,8 @@ import cv2
 import numpy as np
 import random
 import matplotlib.pyplot as plt
+import scipy
+from tqdm import tqdm
 import torch
 from torch import nn
 from torch.utils.data import Dataset, DataLoader
@@ -18,6 +20,8 @@ class Fingerprints(Dataset):
             img_id = int((img_path.split('/')[-1]).split('_')[0])
             self.images.append(cv2.resize(cv2.imread(img_path, cv2.IMREAD_GRAYSCALE), img_dim)[np.newaxis, :, :])
             self.labels.append(1 if img_id == focus else 0)
+
+    def pad_with_focus(self):
         self.focus = self.images[int(np.where(self.labels)[0])]
         for o in range(len(self.labels) // 2):
             self.images.append(self.focus)
@@ -31,6 +35,25 @@ class Fingerprints(Dataset):
 
     def __getitem__(self, idx):
         return self.images[idx], torch.tensor([self.labels[idx]]).float()
+
+class FingerprintFeatures(Dataset):
+    def __init__(self, features_path):
+        self.features, self.labels = np.load(features_path)
+
+    def pad_with_focus(self):
+        self.focus = self.features[int(np.where(self.labels)[0])]
+        for o in range(len(self.labels) // 2):
+            self.features.append(self.focus)
+            self.labels.append(1)
+
+    def get_dataset_focus(self):
+        return self.focus
+
+    def __len__(self):
+        return len(self.labels)
+
+    def __getitem__(self, idx):
+        return self.features[idx], torch.tensor([self.labels[idx]]).float()
 
 class ImageProcess:
     @staticmethod 
@@ -61,6 +84,11 @@ class ImageProcess:
 
         return newimage
 
+    @staticmethod
+    def vector_features_cosdist(v1, v2):
+        distances = scipy.spatial.distance.cdist(v1, v2, 'cosine')
+        return distances
+
 class FeatureExtractor(nn.Module):
     def __init__(self, model):
         super(FeatureExtractor, self).__init__()
@@ -81,46 +109,84 @@ class FeatureExtractor(nn.Module):
 
         return x
 
+class VectorLinearNet(nn.Module):
+    def __init__(self):
+        super().__init__()
+        self.fc1 = nn.Linear(4096, 2048)
+        self.fc2 = nn.Linear(2048, 1024)
+        self.fc3 = nn.Linear(1024, 84)
+        self.fc4 = nn.Linear(84, 1)
+        self.s = nn.Sigmoid()
+
+    def forward(self, x):
+        x = F.relu(self.fc1(x))
+        x = F.relu(self.fc2(x))
+        x = F.relu(self.fc3(x))
+        x = self.fc4(x)
+        x = self.s(x)
+        return x
+
 def imshow(img):
     imgplot = plt.imshow(img.astype('uint8'), cmap='gray')
     plt.show()
 
 def train(epochs, trainset):
+    focus_features = np.array([np.squeeze(extract_features(train_focus), axis=0) for t in range(batch_size)])
+
     for e in range(epochs):
         for i, batch in enumerate(trainset):
             X, y = batch
             X = torch.from_numpy(np.array(X)).float()
 
             # imshow(X[0][0].detach().numpy())
+
             # X = [ImageProcess.morph_op(img) for img in X]
             # X = [ImageProcess.gabor_filter(img) for img in X]
 
-            features = extract_features(X)
+            X = extract_features(X)
 
-            # optimiser.zero_grad()
-            # pred = net(X)
-            # loss = loss_fn(pred, y)
-            # loss.backward()
-            # optimiser.step()
-            # print(f'epoch: {e + 1} batch: {i + 1} loss: {loss.item()}')
+            # dists = np.array([np.squeeze(ImageProcess.vector_features_cosdist(v1[np.newaxis], v2[np.newaxis]), axis=1) for v1, v2 in zip(features, focus_features)])
+            # for i in range(batch_size): print(f'dists[{i}]: {dists[i]} label: {y[i]}')
+
+            optimiser.zero_grad()
+            pred = net(torch.from_numpy(X))
+            loss = loss_fn(pred, y)
+            loss.backward()
+            optimiser.step()
+            print(f'epoch: {e + 1} batch: {i + 1} loss: {loss.item()}')
 
 def extract_features(imgs):
     with torch.no_grad():
-        features = [net(img).detach().numpy().reshape(-1) for img in imgs]
+        features = [fe(img).detach().numpy().reshape(-1) for img in imgs]
+
     return np.array(features)
+
+def numpy_save_features(dataloader):
+    features = []
+    for batch in tqdm(dataloader):
+        X, y = batch
+        X = torch.from_numpy(np.array(X)).float()
+
+        features.append(extract_features(X), y)
+
+    np.save(MODEL_PATH + 'features.npy', features)
 
 DATASET_PATH = 'data/socofing/real'
 MODEL_PATH = 'models/'
 
 model = models.vgg16(weights='DEFAULT')
-net = FeatureExtractor(model)
+fe = FeatureExtractor(model)
 
+numpy_save_features(DataLoader(Fingerprints('left index finger', random.randint(1, 600)), batch_size=1))
+
+# batch_size = 30
+
+# train_fingerprints = FingerprintFeatures(MODEL_PATH + 'features.npy')
+# train_fingerprints.pad_with_focus()
+# train_focus = torch.from_numpy(np.array(train_fingerprints.get_dataset_focus())).float()[None]
+
+# net = VectorLinearNet()
 # loss_fn = nn.MSELoss()
 # optimiser = optim.Adam(net.parameters(), lr=0.01)
 
-batch_size = 30
-
-train_fingerprints = Fingerprints('left index finger', random.randint(1, 600))
-train_focus = train_fingerprints.get_dataset_focus()
-
-train(1, DataLoader(train_fingerprints, batch_size=batch_size, shuffle=True))
+# train(1, DataLoader(train_fingerprints, batch_size=batch_size, shuffle=True))
