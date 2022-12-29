@@ -20,9 +20,9 @@ class Fingerprints(Dataset):
             img_id = int((img_path.split('/')[-1]).split('_')[0])
             self.images.append(cv2.resize(cv2.imread(img_path, cv2.IMREAD_GRAYSCALE), img_dim)[np.newaxis, :, :])
             self.labels.append(1 if img_id == focus else 0)
+        self.focus = self.images[int(np.where(self.labels)[0])]
 
     def pad_with_focus(self):
-        self.focus = self.images[int(np.where(self.labels)[0])]
         for o in range(len(self.labels) // 2):
             self.images.append(self.focus)
             self.labels.append(1)
@@ -89,6 +89,10 @@ class ImageProcess:
         distances = scipy.spatial.distance.cdist(v1, v2, 'cosine')
         return distances
 
+    @staticmethod
+    def simple_vector_dist(v1, v2):
+        return np.array([np.subtract(a, b) for a, b in zip(v1, v2)])
+
 class FeatureExtractor(nn.Module):
     def __init__(self, model):
         super(FeatureExtractor, self).__init__()
@@ -130,8 +134,8 @@ def imshow(img):
     imgplot = plt.imshow(img.astype('uint8'), cmap='gray')
     plt.show()
 
-def train(epochs, trainset):
-    focus_features = np.array([np.squeeze(extract_features(train_focus), axis=0) for t in range(batch_size)])
+def train(epochs, model, trainset):
+    focus_features = np.array([np.squeeze(extract_features(focus), axis=0) for t in range(batch_size)])
 
     for e in range(epochs):
         for i, batch in enumerate(trainset):
@@ -145,11 +149,17 @@ def train(epochs, trainset):
 
             X = extract_features(X)
 
+            # print(f'extract_features at 0: {X[0]}')
+
+            X = ImageProcess.simple_vector_dist(focus_features, X)
+
+            # print(f'simple_vector_dist at 0: {X[0]}')
+
             # dists = np.array([np.squeeze(ImageProcess.vector_features_cosdist(v1[np.newaxis], v2[np.newaxis]), axis=1) for v1, v2 in zip(features, focus_features)])
             # for i in range(batch_size): print(f'dists[{i}]: {dists[i]} label: {y[i]}')
 
             optimiser.zero_grad()
-            pred = net(torch.from_numpy(X))
+            pred = model(torch.from_numpy(X))
             loss = loss_fn(pred, y)
             loss.backward()
             optimiser.step()
@@ -157,36 +167,47 @@ def train(epochs, trainset):
 
 def extract_features(imgs):
     with torch.no_grad():
-        features = [fe(img).detach().numpy().reshape(-1) for img in imgs]
+        return np.array([fe(img).detach().numpy().reshape(-1) for img in imgs])
 
-    return np.array(features)
-
-def numpy_save_features(dataloader):
-    features = []
-    for batch in tqdm(dataloader):
-        X, y = batch
-        X = torch.from_numpy(np.array(X)).float()
-
-        features.append(extract_features(X), y)
-
-    np.save(MODEL_PATH + 'features.npy', features)
+def test(model, testset):
+    with torch.no_grad():
+        for X, y in testset:
+            pred = model(torch.from_numpy(X))
+            print('pred: {pred} actual: {y}')
 
 DATASET_PATH = 'data/socofing/real'
 MODEL_PATH = 'models/'
 
+SAVE_PATH = MODEL_PATH + 'net.pth'
+
+# model = models.resnet50(weights=models.ResNet50_Weights.DEFAULT)
 model = models.vgg16(weights='DEFAULT')
+model.eval()
+for param in model.parameters():
+    param.requires_grad = False
+
 fe = FeatureExtractor(model)
 
-numpy_save_features(DataLoader(Fingerprints('left index finger', random.randint(1, 600)), batch_size=1))
+net = VectorLinearNet()
+# net.load_state_dict(torch.load(SAVE_PATH))
 
-# batch_size = 30
+fingerprints = Fingerprints('left index finger', random.randint(1, 600))
+focus = torch.from_numpy(np.array(fingerprints.get_dataset_focus())).float()[None]
 
-# train_fingerprints = FingerprintFeatures(MODEL_PATH + 'features.npy')
-# train_fingerprints.pad_with_focus()
-# train_focus = torch.from_numpy(np.array(train_fingerprints.get_dataset_focus())).float()[None]
+# Training
+batch_size = 30
 
-# net = VectorLinearNet()
-# loss_fn = nn.MSELoss()
-# optimiser = optim.Adam(net.parameters(), lr=0.01)
+net.train()
+fingerprints.pad_with_focus()
 
-# train(1, DataLoader(train_fingerprints, batch_size=batch_size, shuffle=True))
+loss_fn = nn.MSELoss()
+optimiser = optim.Adam(net.parameters(), lr=0.01)
+
+train(1, net, DataLoader(fingerprints, batch_size=batch_size, shuffle=True))
+torch.save(net.state_dict(), SAVE_PATH)
+
+# Testing
+# net.load_state_dict(torch.load(SAVE_PATH))
+# net.eval()
+# 
+# test(net, DataLoader(fingerprints, batch_size=1, shuffle=True))
