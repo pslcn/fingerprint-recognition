@@ -123,6 +123,13 @@ def imshow(img):
     imgplot = plt.imshow(img.astype('uint8'), cmap='gray')
     plt.show()
 
+def get_focus_fingerprint(path, img_dim=(416, 416)):
+    for img_path in glob.glob(path + f'/*{FINGER[0].capitalize()}_{"_".join([e for e in FINGER[1:]])}*.BMP'):
+        img_id = int((img_path.split('/')[-1]).split('_')[0])
+        if img_id == FOCUS_ID:
+            return cv2.resize(cv2.imread(img_path, cv2.IMREAD_GRAYSCALE), img_dim)[np.newaxis, :, :]
+    return None
+
 def train(epochs, save_path):
     fingerprints = Fingerprints(TRAINSET_PATH, FINGER, FOCUS_ID) 
     net = SimpleNet(torch.from_numpy(np.array(FOCUS)).float()[None])
@@ -156,23 +163,27 @@ def test(load_path):
             num_correct = sum([1 if(abs(a - b) <= 0.1) else 0 for a, b in zip(pred.detach().numpy(), y.detach().numpy())])
             print(f'batch: {i + 1} accuracy: {(num_correct / batch_size) * 100}%')
 
-def get_focus_fingerprint(path, img_dim=(416, 416)):
-    for img_path in glob.glob(path + f'/*{FINGER[0].capitalize()}_{"_".join([e for e in FINGER[1:]])}*.BMP'):
-        img_id = int((img_path.split('/')[-1]).split('_')[0])
-        if img_id == FOCUS_ID:
-            return cv2.resize(cv2.imread(img_path, cv2.IMREAD_GRAYSCALE), img_dim)[np.newaxis, :, :]
-    return None
-
+""" For training and testing:
 DATASET_PATH = 'data/socofing/'
 TRAINSET_PATH = DATASET_PATH + 'real'
 TESTSET_PATH = lambda difficulty : DATASET_PATH + 'altered/' + difficulty
 
-MODEL_PATH = 'models/'
-SAVE_PATH = MODEL_PATH + 'net.pth'
-
 FINGER = 'left index finger'.split(' ')
 FOCUS_ID = random.randint(1, 600)
 FOCUS = get_focus_fingerprint(TRAINSET_PATH)
+"""
 
-# train(2, MODEL_PATH + 'test.pth')
-test(SAVE_PATH)
+MODEL_PATH = 'models/'
+SAVE_PATH = MODEL_PATH + 'net.pth'
+
+import sys
+
+saved = cv2.resize(cv2.imread(sys.argv[1], cv2.IMREAD_GRAYSCALE), (416, 416))[np.newaxis, :, :]
+query = cv2.resize(cv2.imread(sys.argv[2], cv2.IMREAD_GRAYSCALE), (416, 416))[np.newaxis, :, :]
+net = SimpleNet(torch.from_numpy(np.array(saved)).float()[None])
+net.load_state_dict(torch.load(SAVE_PATH))
+net.eval()
+with torch.no_grad():
+    X = torch.from_numpy(np.array(query)).float()[None]
+    pred = net(X)
+    print(f'pred: {pred.item()}')
