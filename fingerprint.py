@@ -35,8 +35,7 @@ class ImageProcess:
     @staticmethod 
     def morph_op(img):
         cross = np.array([[0, 1, 0], [1, 1, 1], [0, 1, 0]]).astype('uint8')
-        ret = cv2.erode(img.numpy(), cross, iterations=1)
-        return cv2.dilate(ret, cross, iterations=1)
+        return cv2.dilate(cv2.erode(img.numpy(), cross, iterations=1), cross, iterations=1)
 
     @staticmethod
     def gabor_filter(img):
@@ -98,27 +97,38 @@ def imshow(img):
     imgplot = plt.imshow(img.astype('uint8'), cmap='gray')
     plt.show()
 
-def train(epochs, model, trainset):
+def train(epochs, save_path):
+    fingerprints = Fingerprints(TRAINSET_PATH, FINGER, FOCUS_ID) 
+    net = SimpleNet(torch.from_numpy(np.array(FOCUS)).float()[None])
+    batch_size = 30
+    net.train()
+    fingerprints.pad_with_focus()
+    loss_fn = nn.MSELoss()
+    optimiser = optim.Adam(net.parameters(), lr=0.01)
     for e in range(epochs):
-        for i, batch in enumerate(trainset):
-            X, y = batch
+        for i, (X, y) in enumerate(DataLoader(fingerprints, batch_size=batch_size, shuffle=True)):
             X = torch.from_numpy(np.array(X)).float()
-            # X = [ImageProcess.morph_op(img) for img in X]
-            # X = [ImageProcess.gabor_filter(img) for img in X]
             optimiser.zero_grad()
-            pred = model(X)
+            pred = net(X)
             loss = loss_fn(pred, y)
             loss.backward()
             optimiser.step()
             print(f'epoch: {e + 1} batch: {i + 1} loss: {loss.item()}')
+    torch.save(net.state_dict(), save_path)
 
-def test(model, testset):
+def test(load_path):
+    fingerprints = Fingerprints(TESTSET_PATH('hard'), FINGER, FOCUS_ID)
+    net = SimpleNet(torch.from_numpy(np.array(FOCUS)).float()[None])
+    net.load_state_dict(torch.load(load_path))
+    batch_size = 30
+    net.eval()
+    fingerprints.pad_with_focus()
     with torch.no_grad():
-        for X, y in testset:
-            imshow(X[0][0].detach().numpy())
+        for i, (X, y) in enumerate(DataLoader(fingerprints, batch_size=batch_size, shuffle=True)):
             X = torch.from_numpy(np.array(X)).float()
-            pred = model(X)
-            print(f'pred: {pred} actual: {y}')
+            pred = net(X)
+            num_correct = sum([1 if(abs(a - b) <= 0.1) else 0 for a, b in zip(pred.detach().numpy(), y.detach().numpy())])
+            print(f'batch: {i + 1} accuracy: {(num_correct / batch_size) * 100}%')
 
 def get_focus_fingerprint(path, img_dim=(416, 416)):
     for img_path in glob.glob(path + f'/*{FINGER[0].capitalize()}_{"_".join([e for e in FINGER[1:]])}*.BMP'):
@@ -138,31 +148,5 @@ FINGER = 'left index finger'.split(' ')
 FOCUS_ID = random.randint(1, 600)
 FOCUS = get_focus_fingerprint(TRAINSET_PATH)
 
-# Training
-# fingerprints = Fingerprints(TRAINSET_PATH, 'left index finger', random.randint(1, 600))
-# focus = torch.from_numpy(np.array(fingerprints.get_dataset_focus())).float()[None]
-# 
-# net = SimpleNet(focus)
-# net.load_state_dict(torch.load(SAVE_PATH))
-# 
-# batch_size = 30
-# 
-# net.train()
-# fingerprints.pad_with_focus()
-# 
-# loss_fn = nn.MSELoss()
-# optimiser = optim.Adam(net.parameters(), lr=0.01)
-# 
-# train(1, net, DataLoader(fingerprints, batch_size=batch_size, shuffle=True))
-# torch.save(net.state_dict(), SAVE_PATH)
-
-# Testing
-fingerprints = Fingerprints(TESTSET_PATH('hard'), FINGER, FOCUS_ID)
-
-net = SimpleNet(torch.from_numpy(np.array(get_focus_fingerprint(TRAINSET_PATH))).float()[None])
-net.load_state_dict(torch.load(SAVE_PATH))
-
-net.eval()
-fingerprints.pad_with_focus()
-
-test(net, DataLoader(fingerprints, batch_size=1, shuffle=True))
+# train(2, MODEL_PATH + 'test.pth')
+test(SAVE_PATH)
