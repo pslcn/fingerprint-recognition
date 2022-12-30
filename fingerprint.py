@@ -36,25 +36,6 @@ class Fingerprints(Dataset):
     def __getitem__(self, idx):
         return self.images[idx], torch.tensor([self.labels[idx]]).float()
 
-class FingerprintFeatures(Dataset):
-    def __init__(self, features_path):
-        self.features, self.labels = np.load(features_path)
-
-    def pad_with_focus(self):
-        self.focus = self.features[int(np.where(self.labels)[0])]
-        for o in range(len(self.labels) // 2):
-            self.features.append(self.focus)
-            self.labels.append(1)
-
-    def get_dataset_focus(self):
-        return self.focus
-
-    def __len__(self):
-        return len(self.labels)
-
-    def __getitem__(self, idx):
-        return self.features[idx], torch.tensor([self.labels[idx]]).float()
-
 class ImageProcess:
     @staticmethod 
     def morph_op(img):
@@ -86,8 +67,7 @@ class ImageProcess:
 
     @staticmethod
     def vector_features_cosdist(v1, v2):
-        distances = scipy.spatial.distance.cdist(v1, v2, 'cosine')
-        return distances
+        return scipy.spatial.distance.cdist(v1, v2, 'cosine')
 
     @staticmethod
     def simple_vector_dist(v1, v2):
@@ -96,24 +76,18 @@ class ImageProcess:
 class FeatureExtractor(nn.Module):
     def __init__(self, model):
         super(FeatureExtractor, self).__init__()
-
         self.features = list(model.features)
-
-        self.features = nn.Sequential(
-                nn.Conv2d(1, 3, 3),
-                *self.features)
+        self.features = nn.Sequential(nn.Conv2d(1, 3, 3), *self.features)
         self.pooling = model.avgpool
         self.fc = model.classifier[0]
 
     def forward(self, x):
         x = self.pooling(self.features(x))
-
         x = torch.flatten(x, 0)
         x = self.fc(x)
-
         return x
 
-class VectorLinearNet(nn.Module):
+class LinearNet(nn.Module):
     def __init__(self):
         super().__init__()
         self.fc1 = nn.Linear(4096, 2048)
@@ -126,8 +100,7 @@ class VectorLinearNet(nn.Module):
         x = F.relu(self.fc1(x))
         x = F.relu(self.fc2(x))
         x = F.relu(self.fc3(x))
-        x = self.fc4(x)
-        x = self.s(x)
+        x = self.s(self.fc4(x))
         return x
 
 def imshow(img):
@@ -136,7 +109,6 @@ def imshow(img):
 
 def train(epochs, model, trainset):
     focus_features = np.array([np.squeeze(extract_features(focus), axis=0) for t in range(batch_size)])
-
     for e in range(epochs):
         for i, batch in enumerate(trainset):
             X, y = batch
@@ -148,13 +120,7 @@ def train(epochs, model, trainset):
             # X = [ImageProcess.gabor_filter(img) for img in X]
 
             X = extract_features(X)
-
-            # print(f'extract_features at 0: {X[0]}')
-
             X = ImageProcess.simple_vector_dist(focus_features, X)
-
-            # print(f'simple_vector_dist at 0: {X[0]}')
-
             # dists = np.array([np.squeeze(ImageProcess.vector_features_cosdist(v1[np.newaxis], v2[np.newaxis]), axis=1) for v1, v2 in zip(features, focus_features)])
             # for i in range(batch_size): print(f'dists[{i}]: {dists[i]} label: {y[i]}')
 
@@ -188,7 +154,7 @@ for param in model.parameters():
 
 fe = FeatureExtractor(model)
 
-net = VectorLinearNet()
+net = LinearNet()
 # net.load_state_dict(torch.load(SAVE_PATH))
 
 fingerprints = Fingerprints('left index finger', random.randint(1, 600))
