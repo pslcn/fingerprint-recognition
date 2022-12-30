@@ -60,6 +60,32 @@ class ImageProcess:
     def vector_features_cosdist(v1, v2):
         return scipy.spatial.distance.cdist(v1, v2, 'cosine')
 
+    @staticmethod
+    def cv2_kaze_descriptors(img, vector_size=32):
+        alg = cv2.KAZE_create()
+        kps = alg.detect(img)
+        kps = sorted(kps, key=lambda x: -x.response)[:vector_size]
+        kps, dsc = alg.compute(img, kps)
+        dsc = dsc.flatten()
+        needed_size = (vector_size * 64)
+        if dsc.size < needed_size:
+            dsc = np.concatenate([dsc, np.zeros(needed_size - dsc.size)])
+        return dsc
+
+    @staticmethod 
+    def cv2_orb_brute_force(saved, query):
+        orb = cv2.ORB_create()
+        saved_keypoints, saved_descriptor = orb.detectAndCompute(saved, None)
+        query_keypoints, query_descriptor = orb.detectAndCompute(query, None)
+        keypoints_without_size = np.copy(saved)
+        cv2.drawKeypoints(saved, saved_keypoints, keypoints_iwhtout_size, color=(0, 0, 255))
+        brute_force = cv2.BFMatcher(cv2.NORM_HAMMING, crossCheck=True)
+        matches = brute_force.match(saved_descriptor, query_descriptor)
+        matches = sorted(matches, key=lambda x: x.distance)
+        img_showing_matches = cv2.drawMatches(query_img, query_keypoints, saved_img, saved_keypoints, matches, saved_img, flags=2)
+        num_matches = np.array([len(matches)])
+        return num_matches
+
 class SimpleNet(nn.Module):
     def __init__(self, focus):
         super().__init__()
