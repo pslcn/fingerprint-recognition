@@ -10,21 +10,24 @@ import imgs
 from imgs import Fingerprints
 from model import SimpleNet
 
+MODEL_PATH = 'models/'
+SAVE_PATH = MODEL_PATH + 'net.pth'
+
+# """ Training and Testing:
 def imshow(img):
     imgplot = plt.imshow(img.astype('uint8'), cmap='gray')
     plt.show()
 
-def train(epochs, save_path):
-    fingerprints = Fingerprints(TRAINSET_PATH, FINGER, FOCUS_ID) 
-    net = SimpleNet(torch.from_numpy(np.array(FOCUS)).float()[None])
-    batch_size = 30
-    net.train()
-    fingerprints.pad_with_focus(FOCUS)
+def train_and_save(epochs, trainset_path, finger, focus_id, focus, save_path, batch_size=30):
+    fingerprints = Fingerprints(trainset_path, finger, focus_id) 
+    fingerprints.pad_with_focus(focus)
+    net = SimpleNet(torch.from_numpy(np.array(focus)).float()[None])
     loss_fn = nn.MSELoss()
     optimiser = optim.Adam(net.parameters(), lr=0.01)
     for e in range(epochs):
         for i, (X, y) in enumerate(DataLoader(fingerprints, batch_size=batch_size, shuffle=True)):
-            X = torch.from_numpy(np.array(X)).float()
+            # Preprocessing is done on X as np arrays
+            X = torch.from_numpy(np.array(X)).float() # Model uses tensors
             optimiser.zero_grad()
             pred = net(X)
             loss = loss_fn(pred, y)
@@ -33,13 +36,13 @@ def train(epochs, save_path):
             print(f'epoch: {e + 1} batch: {i + 1} loss: {loss.item()}')
     torch.save(net.state_dict(), save_path)
 
-def test(load_path):
-    fingerprints = Fingerprints(TESTSET_PATH('hard'), FINGER, FOCUS_ID)
-    net = SimpleNet(torch.from_numpy(np.array(FOCUS)).float()[None])
+def test(testset_path, finger, focus_id, focus, load_path):
+    fingerprints = Fingerprints(testset_path, finger, focus_id)
+    fingerprints.pad_with_focus(focus)
+    net = SimpleNet(torch.from_numpy(np.array(focus)).float()[None])
     net.load_state_dict(torch.load(load_path))
     batch_size = 30
     net.eval()
-    fingerprints.pad_with_focus(FOCUS)
     with torch.no_grad():
         for i, (X, y) in enumerate(DataLoader(fingerprints, batch_size=batch_size, shuffle=True)):
             X = torch.from_numpy(np.array(X)).float()
@@ -47,7 +50,6 @@ def test(load_path):
             num_correct = sum([1 if(abs(a - b) <= 0.1) else 0 for a, b in zip(pred.detach().numpy(), y.detach().numpy())])
             print(f'batch: {i + 1} accuracy: {(num_correct / batch_size) * 100}%')
 
-# """ For training and testing:
 DATASET_PATH = 'data/socofing/'
 TRAINSET_PATH = DATASET_PATH + 'real'
 TESTSET_PATH = lambda difficulty : DATASET_PATH + 'altered/' + difficulty
@@ -55,12 +57,10 @@ TESTSET_PATH = lambda difficulty : DATASET_PATH + 'altered/' + difficulty
 FINGER = 'left index finger'.split(' ')
 FOCUS_ID = random.randint(1, 600)
 FOCUS = imgs.get_focus_fingerprint(TRAINSET_PATH, FINGER, FOCUS_ID)
+
+train_and_save(1, TRAINSET_PATH, FINGER, FOCUS_ID, FOCUS, SAVE_PATH)
+test(TESTSET_PATH('hard'), FINGER, FOCUS_ID, FOCUS, SAVE_PATH)
 # """
-
-MODEL_PATH = 'models/'
-SAVE_PATH = MODEL_PATH + 'net.pth'
-
-test(SAVE_PATH)
 
 """
 import sys
