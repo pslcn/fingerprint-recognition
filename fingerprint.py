@@ -8,20 +8,24 @@ from torch.utils.data import Dataset, DataLoader
 import torch.optim as optim
 import imgs
 from imgs import Fingerprints
-from model import SimpleNet
+from model import SimpleCNN
 
 MODEL_PATH = 'models/'
 SAVE_PATH = MODEL_PATH + 'net.pth'
 
 # """ Training and Testing:
+DATASET_PATH = 'data/socofing/'
+TRAINSET_PATH = DATASET_PATH + 'real'
+TESTSET_PATH = lambda difficulty : DATASET_PATH + 'altered/' + difficulty
+
 def imshow(img):
     imgplot = plt.imshow(img.astype('uint8'), cmap='gray')
     plt.show()
 
-def train_and_save(epochs, trainset_path, finger, focus_id, focus, save_path, batch_size=30):
+def train(epochs, trainset_path, finger, focus_id, focus, save_path, batch_size=30):
     fingerprints = Fingerprints(trainset_path, finger, focus_id) 
     fingerprints.pad_with_focus(focus)
-    net = SimpleNet(torch.from_numpy(np.array(focus)).float()[None])
+    net = SimpleCNN(torch.from_numpy(np.array(focus)).float()[None])
     loss_fn = nn.MSELoss()
     optimiser = optim.Adam(net.parameters(), lr=0.01)
     for e in range(epochs):
@@ -39,7 +43,7 @@ def train_and_save(epochs, trainset_path, finger, focus_id, focus, save_path, ba
 def test(testset_path, finger, focus_id, focus, load_path):
     fingerprints = Fingerprints(testset_path, finger, focus_id)
     fingerprints.pad_with_focus(focus)
-    net = SimpleNet(torch.from_numpy(np.array(focus)).float()[None])
+    net = SimpleCNN(torch.from_numpy(np.array(focus)).float()[None])
     net.load_state_dict(torch.load(load_path))
     batch_size = 30
     net.eval()
@@ -50,16 +54,12 @@ def test(testset_path, finger, focus_id, focus, load_path):
             num_correct = sum([1 if(abs(a - b) <= 0.1) else 0 for a, b in zip(pred.detach().numpy(), y.detach().numpy())])
             print(f'batch: {i + 1} accuracy: {(num_correct / batch_size) * 100}%')
 
-DATASET_PATH = 'data/socofing/'
-TRAINSET_PATH = DATASET_PATH + 'real'
-TESTSET_PATH = lambda difficulty : DATASET_PATH + 'altered/' + difficulty
-
 FINGER = 'left index finger'.split(' ')
 FOCUS_ID = random.randint(1, 600)
 FOCUS = imgs.get_focus_fingerprint(TRAINSET_PATH, FINGER, FOCUS_ID)
 
-train_and_save(1, TRAINSET_PATH, FINGER, FOCUS_ID, FOCUS, SAVE_PATH)
-test(TESTSET_PATH('hard'), FINGER, FOCUS_ID, FOCUS, SAVE_PATH)
+train(1, TRAINSET_PATH, FINGER, FOCUS_ID, FOCUS, SAVE_PATH)
+# test(TESTSET_PATH('hard'), FINGER, FOCUS_ID, FOCUS, SAVE_PATH)
 # """
 
 """
