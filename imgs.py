@@ -5,31 +5,29 @@ import scipy
 import torch
 from torch.utils.data import Dataset, DataLoader
 
-def get_focus_fingerprint(path, finger, focus_id, img_dim=(416, 416)):
-    for img_path in glob.glob(path + f'/*{finger[0].capitalize()}_{"_".join([e for e in finger[1:]])}*.BMP'):
-        img_id = int((img_path.split('/')[-1]).split('_')[0])
-        if img_id == focus_id:
-            return cv2.resize(cv2.imread(img_path, cv2.IMREAD_GRAYSCALE), img_dim)[np.newaxis, :, :]
+PATHGLOB = lambda path, finger, focus_id: glob.glob(path + f'/*{finger[0].capitalize()}_{"_".join([e for e in finger[1:]])}*.BMP') 
+IMGISFOCUS = lambda img_path, focus_id: int((img_path.split('/')[-1]).split('_')[0]) == focus_id
+IMG_DIM = (416, 416)
+
+def get_focus_fingerprint(path, finger, focus_id):
+    for img_path in PATHGLOB(path, finger, focus_id):
+        if IMGISFOCUS(img_path, focus_id):
+            return cv2.resize(cv2.imread(img_path, cv2.IMREAD_GRAYSCALE), IMG_DIM)[np.newaxis, :, :]
     return None
 
 class Fingerprints(Dataset):
-    def __init__(self, path, finger, focus, img_dim=(416, 416)):
-        self.images, self.labels = [], []
-        for img_path in glob.glob(path + f'/*{finger[0].capitalize()}_{"_".join([e for e in finger[1:]])}*.BMP'):
-            img_id = int((img_path.split('/')[-1]).split('_')[0])
-            self.images.append(cv2.resize(cv2.imread(img_path, cv2.IMREAD_GRAYSCALE), img_dim)[np.newaxis, :, :])
-            self.labels.append(1 if img_id == focus else 0)
+    def __init__(self, path, finger, focus_id):
+        self.data = [(cv2.resize(cv2.imread(img_path, cv2.IMREAD_GRAYSCALE), IMG_DIM)[np.newaxis, :, :], torch.tensor([1]).float() if IMGISFOCUS(img_path, focus_id) else torch.tensor([0]).float()) for img_path in PATHGLOB(path, finger, focus_id)]
 
     def pad_with_focus(self, focus):
-        for o in range(len(self.labels) // 4):
-            self.images.append(focus)
-            self.labels.append(1)
+        for o in range(len(self.data) // 4):
+            self.data.append((focus, torch.tensor([1]).float()))
 
     def __len__(self):
-        return len(self.labels)
+        return len(self.data)
 
     def __getitem__(self, idx):
-        return self.images[idx], torch.tensor([self.labels[idx]]).float()
+        return self.data[idx]
 
 def morph_op(img):
     cross = np.array([[0, 1, 0], [1, 1, 1], [0, 1, 0]]).astype('uint8')
