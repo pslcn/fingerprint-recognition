@@ -2,9 +2,8 @@ import torch
 from torch import nn
 
 class SimpleCNN(nn.Module):
-    def __init__(self, focus):
+    def __init__(self):
         super().__init__()
-        self.focus = focus
         self.feature_extractor = nn.Sequential(
             nn.Conv2d(1, 3, 3, 1, 1),
             nn.ReLU(inplace=True),
@@ -25,9 +24,9 @@ class SimpleCNN(nn.Module):
             nn.Sigmoid()
         )
 
-    def forward(self, x):
+    def forward(self, x, focus):
         x = self.feature_extractor(x)
-        focus = self.feature_extractor(self.focus)
+        focus = self.feature_extractor(focus)
         x = torch.sub(x, focus)
         x = self.conclude(x)
         return x
