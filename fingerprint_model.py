@@ -1,9 +1,14 @@
+import numpy as np
+import random
 import glob
 import cv2
-import numpy as np
 import scipy
-import random
 import torch
+
+import parse_dataset
+
+IMG_DIM = (416, 416)
+
 
 def morph_op(img):
     cross = np.array([[0, 1, 0], [1, 1, 1], [0, 1, 0]]).astype('uint8')
@@ -53,3 +58,29 @@ def cv2_orb_brute_force(saved, query):
     img_showing_matches = cv2.drawMatches(query_img, query_keypoints, saved_img, saved_keypoints, matches, saved_img, flags=2)
     num_matches = np.array([len(matches)])
     return num_matches
+
+
+def cv2_load_image_grayscale(img_path):
+	return cv2.resize(cv2.imread(img_path, cv2.IMREAD_GRAYSCALE), IMG_DIM)[np.newaxis, :, :]
+
+def get_focus_fingerprints(path, finger, focus_id):
+	focus_fingerprints = []
+	for img_path in parse_dataset.fingerprint_paths(path, finger, focus_id):
+		if parse_dataset.img_is_focus(img_path, focus_id):
+			focus_fingerprints.append(cv2_load_image_grayscale(img_path))
+	return focus_fingerprints
+
+class FingerprintsData:
+	def __init__(self, path, finger, focus_id):
+		self.labelled_data = []
+		for img_path in parse_dataset.fingerprint_paths(path, finger, focus_id):
+			self.labelled_data.append((cv2_load_image_grayscale(img_path), torch.tensor([parse_dataset.img_is_focus(img_path, focus_id)], dtype=torch.float64)))
+
+	def pad_with_focus(self, focus):
+		for o in range(len(self.labelled_data) // 4):
+			self.labelled_data.append((focus[random.randint(0, len(focus) - 1)], torch.tensor([1], dtype=torch.float64)))
+
+
+def show_fingerprint(img):
+	imgplot = plt.imshow(img.astype("uint8"), cmap="gray")
+	plt.show()
