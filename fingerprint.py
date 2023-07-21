@@ -42,6 +42,14 @@ TRAINSET_PATH = DATASET_PATH + "real"
 TESTSET_PATH = lambda difficulty: DATASET_PATH + "altered/" + difficulty
 
 
+def show_fingerprint(img):
+	imgplot = plt.imshow(img.astype("uint8"), cmap="gray")
+	plt.show()
+
+
 # FINGER = "left index finger".split(" ")
 # FOCUS_ID = random.randint(1, 600)
 # FOCUS = get_focus_fingerprints(TESTSET_PATH("hard"), FINGER, FOCUS_ID)
+
+
+# train_fingerprints = Fingerprints(TRAINSET_PATH, FINGER, FOCUS_ID)
