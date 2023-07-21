@@ -63,12 +63,10 @@ def cv2_orb_brute_force(saved, query):
 def cv2_load_image_grayscale(img_path):
 	return cv2.resize(cv2.imread(img_path, cv2.IMREAD_GRAYSCALE), IMG_DIM)[np.newaxis, :, :]
 
-def get_focus_fingerprints(path, finger, focus_id):
-	focus_fingerprints = []
+def get_focus_fingerprint(path, finger, focus_id):
 	for img_path in parse_dataset.fingerprint_paths(path, finger, focus_id):
 		if parse_dataset.img_is_focus(img_path, focus_id):
-			focus_fingerprints.append(cv2_load_image_grayscale(img_path))
-	return focus_fingerprints
+			return cv2_load_image_grayscale(img_path)
 
 class FingerprintsData:
 	def __init__(self, path, finger, focus_id):
