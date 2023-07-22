@@ -2,6 +2,7 @@ import numpy as np
 import random
 import glob
 import torch
+import matplotlib.pyplot as plt
 
 import fingerprint_model
 
@@ -15,7 +16,20 @@ TESTSET_PATH = lambda difficulty: DATASET_PATH + "altered/" + difficulty
 
 FINGER = "left index finger".split(" ")
 FOCUS_ID = random.randint(1, 600)
-FOCUS = fingerprint_model.get_focus_fingerprint(TESTSET_PATH("hard"), FINGER, FOCUS_ID)
+# FOCUS = fingerprint_model.get_focus_fingerprint(TESTSET_PATH("hard"), FINGER, FOCUS_ID)
 
+def show_fingerprint(img):
+	if img.ndim == 3:
+		img = img[0]
+	plt.imshow(img.astype("uint8"), cmap="gray")
+	plt.show()
 
-# train_fingerprints = fingerprint_model.Fingerprints(TRAINSET_PATH, FINGER, FOCUS_ID)
+train_fingerprints = fingerprint_model.fingerprint_data(TRAINSET_PATH, FINGER, FOCUS_ID)
+show_fingerprint(train_fingerprints[0])
+
+# components_k = fingerprint_model.IMG_DIM[0] / 2
+# pca = fingerprint_model.principal_component_analysis(train_fingerprints, components_k=components_k)
+# 
+# new_dim = (components_k ** 0.5, components_k ** 0.5)
+# for f in range(10):
+# 	show_fingerprint(pca[f].reshape((new_dim)))
