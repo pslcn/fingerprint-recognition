@@ -20,9 +20,8 @@ def show_fingerprint(img):
 	plt.imshow(img.astype("uint8"), cmap="gray")
 	plt.show()
 
-train_fingerprints = fingerprint_model.fingerprint_data(TRAINSET_PATH, FINGER, FOCUS_ID)
-show_fingerprint(train_fingerprints[0])
-train_fingerprints = train_fingerprints[:100]
+train_fingerprints = fingerprint_model.fingerprint_data(TRAINSET_PATH, FINGER, FOCUS_ID, img_dim=(128, 128))
+print(train_fingerprints.shape)
 
 # components_k = 1024
 # pca = fingerprint_model.principal_component_analysis(train_fingerprints.astype(np.float16), components_k=components_k)
