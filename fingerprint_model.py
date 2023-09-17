@@ -8,11 +8,8 @@ import torch
 import parse_dataset
 
 IMG_DIM = (64, 64)
-IMG_DTYPE = np.uint8
 
 def cv2_load_image_grayscale(img_path, have_3dims=False):
-	# if have_3dims:
-	# 	return cv2.resize(cv2.imread(img_path, cv2.IMREAD_GRAYSCALE), IMG_DIM)[np.newaxis, :, :]
 	return cv2.resize(cv2.imread(img_path, cv2.IMREAD_GRAYSCALE), IMG_DIM)
 
 def get_focus_fingerprint(path, finger, focus_id):
@@ -24,7 +21,7 @@ def fingerprint_data(path, finger, focus_id):
 	fingerprint_paths = parse_dataset.fingerprint_paths(path, finger, focus_id)
 	fingerprints = np.zeros((len(fingerprint_paths), *IMG_DIM), dtype=IMG_DTYPE)
 	for f in range(fingerprints.shape[0]):
-		fingerprints[f] = cv2_load_image_grayscale(fingerprint_paths[f]).astype(IMG_DTYPE)
+		fingerprints[f] = cv2_load_image_grayscale(fingerprint_paths[f]).astype(np.uint8)
 	return fingerprints
 
 def principal_component_analysis(imgs, components_k=100):
