@@ -14,4 +14,4 @@ focus_id = random.randint(1, 600)
 # focus = fingerprint_model.get_focus_fingerprint(altered_dir_path("hard"), FINGER, FOCUS_ID)
 
 train_fingerprints = fingerprint_model.fingerprint_data(DATASET_PATH + "real", finger, focus_id, img_dim=(128, 128))
-print(train_fingerprints.shape)
+print(train_fingerprints.shape, train_fingerprints.dtype)
