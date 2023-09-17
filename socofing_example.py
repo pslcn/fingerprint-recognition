@@ -21,12 +21,11 @@ def show_fingerprint(img):
 	plt.show()
 
 train_fingerprints = fingerprint_model.fingerprint_data(TRAINSET_PATH, FINGER, FOCUS_ID)
-# show_fingerprint(train_fingerprints[0])
+show_fingerprint(train_fingerprints[0])
 train_fingerprints = train_fingerprints[:100]
 
-components_k = 1024
-pca = fingerprint_model.principal_component_analysis(train_fingerprints.astype(np.float16), components_k=components_k)
- 
-new_dim = (int(components_k ** 0.5), int(components_k ** 0.5))
-for f in range(10):
-	show_fingerprint(pca[f].reshape((new_dim)))
+# components_k = 1024
+# pca = fingerprint_model.principal_component_analysis(train_fingerprints.astype(np.float16), components_k=components_k)
+# new_dim = (int(components_k ** 0.5), int(components_k ** 0.5))
+# for f in range(10):
+# 	show_fingerprint(pca[f].reshape((new_dim)))
