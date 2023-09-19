@@ -21,6 +21,36 @@ def fingerprint_data(path, finger, focus_id, img_dim=(64, 64)):
 		fingerprints[f] = cv2_load_image_grayscale(fingerprint_paths[f], img_dim).astype(np.uint8)
 	return fingerprints
 
+class FingerprintImgs:
+  def __init__(path, img_dim=(64, 64), batch_size=32):
+    self.fingerprint_paths = glob.glob(path + "/*.BMP")
+    self.batch_size, self.img_dim = batch_size, img_dim
+
+  def __len__(self): return len(self.fingerprint_paths)
+
+  def __iter__(self): 
+    self.batchidx = 0
+    return self
+
+  def get_batch(self, start, batch_size): 
+    batch = np.zeros((batch_size, *img_dim), dtype=np.float16)
+    for i in range(start, start + batch_size):
+      batch[i - start] = cv2_load_image_grayscale(self.fingerprint_paths[i], self.img_dim).astype(np.float16)
+    return batch
+
+  def __next__(self):
+    if (self.batchidx * self.batch_size) >= len(self.fingerprint_paths): 
+      last_idx = (self.batchidx - 1) * self.batch_size
+      batch_size = last_idx- len(self.fingerprint_paths)
+      if batch_size <= 0:
+        raise StopIteration
+      self.batchidx += 1
+      return self.get_batch(last_idx, batch_size)
+    return self.load_batch(self.batchidx * self.batch_size, self.batch_size)
+
+def normalise_imgs(imgs):
+  return imgs / 255
+
 
 def principal_component_analysis(imgs, components_k=100):
 	imgs = imgs.reshape((imgs.shape[0], IMG_DIM[0] ** 2))
