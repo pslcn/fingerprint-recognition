@@ -19,3 +19,6 @@ print(train_fingerprints.shape, train_fingerprints.dtype)
 # print(train_fingerprints[0])
 # plt.imshow(train_fingerprints[0])
 # plt.show()
+
+fingerprints = fingerprint_model.FingerprintImgs(DATASET_PATH + "real")
+# print(fingerprints)
