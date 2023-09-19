@@ -39,14 +39,9 @@ class FingerprintImgs:
     return batch
 
   def __next__(self):
-    if (self.batchidx * self.batch_size) >= len(self.fingerprint_paths): 
-      last_idx = (self.batchidx - 1) * self.batch_size
-      batch_size = last_idx- len(self.fingerprint_paths)
-      if batch_size <= 0:
-        raise StopIteration
-      self.batchidx += 1
-      return self.get_batch(last_idx, batch_size)
-    return self.load_batch(self.batchidx * self.batch_size, self.batch_size)
+    batch_size = len(self.fingerprint_paths) - (self.batchidx * self.batch_size)
+    if batch_size < 0: raise StopIteration
+    return self.load_batch(self.batchidx * self.batch_size, self.batch_size if batch_size > self.batch_size else batch_size)
 
 def normalise_imgs(imgs):
   return imgs / 255
