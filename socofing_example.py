@@ -21,4 +21,4 @@ print(train_fingerprints.shape, train_fingerprints.dtype)
 # plt.show()
 
 fingerprints = fingerprint_model.FingerprintImgs(DATASET_PATH + "real")
-# print(fingerprints)
+for i in iter(fingerprints): print(i.shape)
