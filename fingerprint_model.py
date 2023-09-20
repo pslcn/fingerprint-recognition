@@ -22,7 +22,7 @@ def fingerprint_data(path, finger, focus_id, img_dim=(64, 64)):
 	return fingerprints
 
 class FingerprintImgs:
-  def __init__(self, path, img_dim=(64, 64), batch_size=32):
+  def __init__(self, path, img_dim=(128, 128), batch_size=32):
     self.fingerprint_paths = glob.glob(path + "/*.BMP")
     self.batch_size, self.img_dim = batch_size, img_dim
     self.shuffle()
