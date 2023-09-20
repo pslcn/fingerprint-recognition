@@ -25,6 +25,9 @@ class FingerprintImgs:
   def __init__(self, path, img_dim=(64, 64), batch_size=32):
     self.fingerprint_paths = glob.glob(path + "/*.BMP")
     self.batch_size, self.img_dim = batch_size, img_dim
+    self.shuffle()
+
+  def shuffle(self): np.random.shuffle(self.fingerprint_paths)
 
   def __len__(self): return len(self.fingerprint_paths)
 
