@@ -36,7 +36,7 @@ class FingerprintImgs:
     batch = np.zeros((batch_size, *self.img_dim), dtype=np.float16)
     for i in range(start, start + batch_size):
       batch[i - start] = cv2_load_image_grayscale(self.fingerprint_paths[i], self.img_dim).astype(np.float16)
-    return batch
+    return batch, self.fingerprint_paths[start: start + batch_size]
 
   def __next__(self):
     batch_size = len(self.fingerprint_paths) - (self.batchidx * self.batch_size)

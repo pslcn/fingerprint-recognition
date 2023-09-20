@@ -20,5 +20,5 @@ print(train_fingerprints.shape, train_fingerprints.dtype)
 # plt.imshow(train_fingerprints[0])
 # plt.show()
 
-fingerprints = fingerprint_model.FingerprintImgs(DATASET_PATH + "real")
-for i in iter(fingerprints): print(i.shape)
+fingerprints = fingerprint_model.FingerprintImgs(DATASET_PATH + "real", batch_size=32)
+for i, l in iter(fingerprints): print(i.shape, len(l))
